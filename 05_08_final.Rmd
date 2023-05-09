@@ -1,0 +1,473 @@
+---
+title: "Final Modeling Report Codes"
+output: html_notebook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(stats)
+library(caret)
+library(car)
+library(tidyverse)
+library(glmnet)
+library(MASS)
+library(caret)
+library(AICcmodavg) 
+library(caret)
+library(Metrics)
+```
+
+1.  Data
+
+```{r}
+# dealing with NA values 
+data <- read.csv("life_exp.csv")
+head(data)
+```
+
+To further justify our decision to omit rows with missing values, we conducted additional analysis on the spread of the missing data over time.
+
+```{r}
+# Group the data by year and count the missing values for each column
+na_data <- data[!complete.cases(data), ]
+missing_count_total <- na_data %>%
+  group_by(Year) %>%
+  summarize(count = n()) 
+ggplot(missing_count_total, aes(x = Year, y = count)) + geom_bar(stat = "identity", fill = "steelblue") + labs(x = "Year", y = "Total Missing Values", title = "Total number of Rows containing at Least one NA value by Year")  
+```
+
+Based on our analysis, we have omitted the rows with NA values. data_NA refers to the data where all the rows with at least one NA value in its corresponding column is omitted.
+
+```{r}
+data_NA <- data[complete.cases(data),]
+```
+
+When training our models -- ANOVA, backward / forward selections, and shrinkage methods -- we will be using the data from year 2009. The code below is to observe the correlation between features for 2009 data.
+
+```{r}
+shrinkage_data <- subset(data_NA, Year == 2009)  
+data_selected <- shrinkage_data[, c(4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22)]
+correlation_matrix <- cor(data_selected)
+# Reshape the correlation matrix into a data frame
+corr_df <- reshape2::melt(correlation_matrix)
+
+# Create a heatmap using ggplot2
+ggplot(data = corr_df, aes(x = Var1, y = Var2, fill = value)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() + ggtitle("Correlation Matrix Heapmap") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+```
+
+II. Dealing with Country as Categorical variable
+
+Since there are many countries, we decided to group them by regions.
+
+```{r}
+# Define a function to group countries into regions
+get_region <- function(country) {
+if(country %in% c("Canada", "Mexico", "United States", "Bahamas", "Barbados", "Belize", "Costa Rica", "Cuba", "Dominica", "Dominican Republic", "El Salvador", "Grenada", "Guatemala", "Haiti", "Honduras", "Jamaica", "Nicaragua", "Panama", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Trinidad and Tobago")) {
+return("NorthAmerica")
+} else if(country %in% c("Argentina", "Bolivia", "Brazil", "Chile", "Colombia", "Ecuador", "Guyana", "Paraguay", "Peru", "Suriname", "Uruguay", "Venezuela")) {
+return("SouthAmerica")
+} else if(country %in% c("Afghanistan", "Bangladesh", "Bhutan", "Cambodia", "China", "India", "Indonesia", "Iraq", "Israel", "Japan", "Jordan", "Kazakhstan", "Kuwait", "Kyrgyzstan", "Laos", "Lebanon", "Malaysia", "Maldives", "Mongolia", "Myanmar", "Nepal", "North Korea", "Oman", "Pakistan", "Palestine", "Philippines", "Qatar", "Saudi Arabia", "Singapore", "South Korea", "Sri Lanka", "Syria", "Taiwan", "Tajikistan", "Thailand", "Timor-Leste", "Turkey", "Turkmenistan", "United Arab Emirates", "Uzbekistan", "Vietnam", "Yemen", "Armenia", "Azerbaijan", "Cyprus", "Georgia", "Russian Federation", "Syrian Arab Republic")) {
+return("Asia")
+} else if(country %in% c("Algeria", "Angola", "Benin", "Botswana", "Burkina Faso", "Burundi", "Cabo Verde", "Cameroon", "Central African Republic", "Chad", "Comoros", "Democratic Republic of the Congo", "Republic of the Congo", "Cote d'Ivoire", "Djibouti", "Egypt", "Equatorial Guinea", "Eritrea", "Eswatini", "Ethiopia", "Gabon", "Gambia", "Ghana", "Guinea", "Guinea-Bissau", "Kenya", "Lesotho", "Liberia", "Libya", "Madagascar", "Malawi", "Mali", "Mauritania", "Mauritius", "Morocco", "Mozambique", "Namibia", "Niger", "Nigeria", "Rwanda", "Sao Tome and Principe", "Senegal", "Seychelles", "Sierra Leone", "Somalia", "South Africa", "South Sudan", "Sudan", "Tanzania", "Togo", "Tunisia", "Uganda", "Zambia", "Zimbabwe", "Swaziland")) {
+return("Africa")
+} else if(country %in% c("Albania", "Germany", "France", "United Kingdom", "Italy", "Spain", "Austria", "Belarus", "Belgium", "Bosnia and Herzegovina", "Bulgaria", "Croatia", "Estonia", "Greece", "Ireland", "Latvia", "Lithuania", "Luxembourg",    "Malta","Montenegro","Netherlands", "Papua New Guinea", "Poland","Portugal",       "Romania", "Serbia", "Sweden", "Ukraine")) {
+return("Europe")
+} else if(country %in% c("New South Wales", "Victoria", "Queensland", "Western Australia", "South Australia", "Tasmania", "Northern Territory", "Australian Capital Territory", "Australia", "Fiji", "Kiribati", "Papua New Guinea", "Samoa", "Solomon Islands", "Tonga", "Vanuatu")) {
+return("Oceania")
+} else {
+return("Other")
+}
+}
+
+# Add a new variable Region based on the Country variable
+data <- data_NA %>%
+  mutate(Region = sapply(Country, get_region))
+
+# Add a new variable Region based on the Country variable
+data <- data_NA %>%
+  mutate(Region = sapply(Country, get_region))
+
+data$Country = NULL
+
+```
+
+Below is the code for creating a box plot that illustrates a general pattern of life expectancy by region.
+
+```{r}
+# Create the box plot
+ggplot(data, aes(x = Region, y = Life.expectancy, fill = Region)) + 
+  geom_boxplot() +
+  labs(x = "Region", y = "Life Expectancy", title = "Distribution of Life Expectancy by Region") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+Below is the code for creating a box plot that illustrates a general pattern of life expectancy by status.
+
+```{r}
+# Create the box plot
+ggplot(data, aes(x = Status, y = Life.expectancy, fill = Status)) + 
+  geom_boxplot() +
+  labs(x = "Status", y = "Life Expectancy", title = "Distribution of Life Expectancy by Status") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) 
+```
+
+1.  Full model diagnostics and influential points pre fitting
+
+```{r}
+
+data2009 <- data[data$Year == 2009, ]
+print(data2009)
+model <- lm(Life.expectancy ~ ., data = data2009)
+summary(model)
+par(mfrow=c(2,2))
+plot(model)
+```
+
+<!-- -->
+
+III. ANOVA model
+
+ANOVA_data is the training data set. We have selected year 2009 in order to ensure that the data are independent with one another.
+
+```{r}
+ANOVA_data <- subset(data, Year == 2009) 
+print(ANOVA_data)
+```
+
+Four anova models: 1. full : region, status, interaction term between region and status 2. no interaction: region, status 3. region: region 4. status: status
+
+```{r}
+set.seed(123)
+full = aov(Life.expectancy ~ Region + Status + Region*Status, 
+          data = ANOVA_data)
+no_interaction = aov(Life.expectancy ~ Region + Status, data = ANOVA_data)
+region = aov(Life.expectancy ~ Region, data = ANOVA_data)
+status = aov(Life.expectancy ~ Status, data = ANOVA_data) 
+
+anova(region, no_interaction)
+anova(status, no_interaction)
+
+Anova(full)
+```
+
+Checking which anova model achieves the lowest AIC value.
+
+```{r}
+model.set <- list(full, no_interaction, region, status)
+model.names <- c("full", "no interaction", "region", "status")
+
+aictab(model.set, modnames = model.names) 
+```
+
+We can observe that the full model achieve the lowest AIC value of 846.23. Checking model assumptions for ANOVA model
+
+Used the following algorithms on the data to select four different models:
+
+-   Forward selection using AIC
+-   Forward selection using BIC
+-   Backward selection using AIC
+-   Backward selection using BIC
+
+```{r}
+set.seed(123)
+
+Selection_data <- subset(data, Year == 2009) 
+Selection_data$Country <- NULL
+full <- lm(Life.expectancy ~., Selection_data)
+null <- lm(Life.expectancy ~1, Selection_data)
+
+# Forward selection using AIC
+model_aic_forward <- stepAIC(null,scope = list(lower = null, upper=full), direction = "forward")
+
+# Forward selection using BIC
+model_bic_forward <- stepAIC(null, direction = "forward", scope = list(lower = null, upper=full), k = log(nrow(Selection_data)))
+
+# Backward selection using BIC
+model_bic_backward <- stepAIC(full, direction = "backward",scope = list(lower = null, upper=full), k = log(nrow(Selection_data)))
+
+# Backward selection using AIC
+model_aic_backward <- stepAIC(full, direction = "backward",scope = list(lower = null, upper=full))
+
+```
+
+Now we conduct 5-fold cross validation for each model and select the one with lowest cross-validation MSE.
+
+```{r}
+
+model_aic_forward_matrix <- model.matrix(model_aic_forward)
+model_bic_forward_matrix <- model.matrix(model_bic_forward)
+model_aic_backward_matrix <- model.matrix(model_aic_backward)
+model_bic_backward_matrix <- model.matrix(model_bic_backward)
+model_aic_forward_lm <- train(x = model_aic_forward_matrix, y = ANOVA_data$Life.expectancy, trControl = trainControl(method = "cv", number = 5), method = "lm")
+model_bic_forward_lm <- train(x = model_bic_forward_matrix, y = ANOVA_data$Life.expectancy,trControl = trainControl(method = "cv", number = 5), method = "lm")
+model_aic_backward_lm <- train(x = model_aic_backward_matrix, y =ANOVA_data$Life.expectancy ,trControl = trainControl(method = "cv", number = 5), method = "lm")
+model_bic_backward_lm <- train(x = model_bic_backward_matrix, y = ANOVA_data$Life.expectancy,trControl = trainControl(method = "cv", number = 5), method = "lm")
+```
+
+Now that we have finished training the model, we would like to validate the model. We selected year 2010 as our validation dataset. We build a linear model based on the four models we trained above
+
+```{r}
+set.seed(123)
+# to check our model, we use the data from year 2010 
+validation_data <- subset(data, Year == 2010)   
+
+model_aic_forward_valid <- lm(model_aic_forward, data = validation_data) 
+model_aic_backward_valid <- lm(model_aic_backward, data = validation_data) 
+model_bic_backward_valid <- lm(model_bic_backward, data = validation_data) 
+model_bic_forward_valid <- lm(model_bic_forward, data = validation_data) 
+
+model_aic_forward_lm
+```
+
+```{r}
+model_bic_forward_lm
+```
+
+```{r}
+model_aic_backward_lm
+```
+
+```{r}
+model_bic_backward_lm
+```
+
+Below is the code for creating a bar graph showing the number of covariates for each variable selection model.
+
+```{r}
+ 
+# Create a data frame
+my_df <- data.frame(Category = c("AIC Forward", "AIC Backward", "BIC Forward", "BIC Backward"),
+                    Value = c(15, 17, 6, 8))
+
+# Create a bar graph
+my_plot <- ggplot(data = my_df, aes(x = Category, y = Value)) +
+  geom_bar(stat = "identity", fill = "blue") +
+  xlab("Models") +
+  ylab("Number of Predictors") +
+  ggtitle("Number of Predictors for Forward and Backward Selection Models")
+
+# Print the plot
+print(my_plot) 
+```
+
+We now validate our feature selection models with our validation dataset, which is from year 2010.
+
+```{r}
+# validation_data
+ 
+validation_data_x <- validation_data %>% mutate(Status = if_else(Status == "Developing", 0, 1)) %>%
+    na.omit()
+validation_data_x$Status <- as.factor(validation_data_x$Status)  
+validation_data_x <- validation_data_x[,c(-1,-2)]
+validation_y <- validation_data$Life.expectancy
+```
+
+From training above, we have found the features that are deemed significant. We cross validate on 2010 data and calculate RMSE below:
+
+```{r}
+set.seed(123)
+train_control <- trainControl(method = "cv", number = 5)
+cv <- c()
+model_5CV_aic_f <- train(Life.expectancy ~ ., data = data.frame(validation_data_x[c("Income.composition.of.resources",'Adult.Mortality', 'HIV.AIDS', 'Schooling', 'BMI', 'under.five.deaths', 'Diphtheria','percentage.expenditure','Alcohol', 'Life.expectancy', 'Region')]), trControl=train_control, method="lm", preProcess = c("center", "scale"))
+cv[1] <- mean(model_5CV_aic_f$results$RMSE^2)
+model_5CV_aic_b <- train(Life.expectancy ~ ., data = validation_data_x[c("Income.composition.of.resources",'Adult.Mortality', 'HIV.AIDS', 'Schooling', 'BMI', 'under.five.deaths', 'Diphtheria','percentage.expenditure','Alcohol', 'thinness.5.9.years', 'thinness..1.19.years', 'Schooling', 'Life.expectancy', 'Region')], trControl=train_control, method="lm", preProcess = c("center", "scale"))
+cv[2] <- mean(model_5CV_aic_b$results$RMSE^2) 
+model_5CV_bic_f <- train(Life.expectancy ~ ., data = validation_data_x[c("Income.composition.of.resources",'Adult.Mortality', 'HIV.AIDS', 'Schooling', 'BMI', 'Life.expectancy')], trControl=train_control, method="lm", preProcess = c("center", "scale"))
+cv[3] <- mean(model_5CV_bic_f$results$RMSE^2)  
+model_5CV_bic_b <- train(Life.expectancy ~ ., data = validation_data_x[c("Income.composition.of.resources",'Adult.Mortality', 'HIV.AIDS', 'Schooling', 'BMI',  'percentage.expenditure','Alcohol', 'Life.expectancy')], trControl=train_control, method="lm", preProcess = c("center", "scale"))
+cv[4] <- mean(model_5CV_bic_b$results$RMSE^2)   
+print(cv)
+RMSE <- tibble(
+    Method = "AIC forward",
+    RMSE = sqrt(cv[1]))
+
+RMSE <- rbind(RMSE,tibble(
+               Method = "AIC backward",
+               RMSE = sqrt(cv[2])))  
+RMSE <- rbind(RMSE,tibble(
+               Method = "BIC forward",
+               RMSE = sqrt(cv[3])))
+RMSE <- rbind(RMSE,tibble(
+               Method = "BIC backward",
+               RMSE = sqrt(cv[4])))
+
+RMSE
+ 
+```
+
+IV. LASSO
+
+We use year 2009 (which is ANOVA_data) as our training dataset. We find the optimal lambda value for LASSO.
+
+```{r Lasso}
+#splitting data into testing and training sets
+shrinkage_data <- ANOVA_data
+shrinkage_data <- shrinkage_data[, -1] # removing Year 
+shrinkage_data <- shrinkage_data[, -21] # removing Region  
+shrinkage_data <- shrinkage_data[, -1] # removing Region 
+X_shrinkage <- shrinkage_data[, -which(colnames(shrinkage_data) == "Life.expectancy")]
+y <- shrinkage_data$Life.expectancy
+
+```
+
+Through cross validation, we find the optimal lambda parameter. We find two lambda based on two selection criteria -- 'minimum' and '1se'
+
+```{r}
+set.seed(123)
+cv_lambda_LASSO <- cv.glmnet(
+  x = apply(as.matrix(X_shrinkage),2,  as.numeric), y = as.matrix(y),
+  alpha = 1,
+  lambda = exp(seq(-8, 3, 0.2)),
+  standardize = TRUE
+  
+)
+lambda_min_MSE_LASSO <- round(cv_lambda_LASSO$lambda.min, 5)
+lambda_lse_MSE_LASSO <- round(cv_lambda_LASSO$lambda.1se, 5) 
+lambda_min_MSE_LASSO
+lambda_lse_MSE_LASSO
+```
+
+Below is the code for the lambda selection by cross validation with Lasso
+
+```{r}
+plot(cv_lambda_LASSO)
+```
+
+We also find the optimal lambda for ridge as well through cross validation. We find two lambda based on two selection criteria -- 'minimum' and '1se'
+
+```{r}
+cv_lambda_RIDGE <- cv.glmnet(
+  x = apply(as.matrix(X_shrinkage),2,  as.numeric), y = as.matrix(y),
+  alpha = 0,
+  lambda = exp(seq(-12, 10, 0.3)),
+  standardize = TRUE 
+)
+lambda_min_MSE_RIDGE <- round(cv_lambda_RIDGE$lambda.min, 5)
+lambda_lse_MSE_RIDGE <- round(cv_lambda_RIDGE$lambda.1se, 5 )
+lambda_min_MSE_RIDGE
+lambda_lse_MSE_RIDGE
+plot(cv_lambda_RIDGE)
+```
+
+Now that we found the optimal lambda for ridge and lasso, we create lasso and lambda model with these lambda model. The final ride and lasso models are named as "model_lasso_holdout" and "model_ridge_holdout"
+
+Then, similar with the forward and backward selection, we choose year 2010 as our validation dataset.
+
+```{r}
+
+# Fit the LASSO, Ridge model using the optimal lambda value
+head(X_shrinkage)
+
+lasso.fit_min <- glmnet(x= apply(as.matrix(X_shrinkage),2,  as.numeric), y = as.matrix(y), alpha = 1, lambda = lambda_min_MSE_LASSO)
+coef(lasso.fit_min)
+lasso.fit_1se <- glmnet(x = apply(as.matrix(X_shrinkage),2,  as.numeric), y = as.matrix(y), alpha = 1, lambda = lambda_lse_MSE_LASSO)
+coef(lasso.fit_1se)
+ridge.fit.min <- glmnet(x = apply(as.matrix(X_shrinkage),2,  as.numeric), y = as.matrix(y), alpha = 0, lambda = lambda_min_MSE_RIDGE) 
+coef(ridge.fit.min)
+ridge.fit.1se <- glmnet(x= apply(as.matrix(X_shrinkage),2,  as.numeric), y = as.matrix(y), alpha = 0, lambda = lambda_lse_MSE_RIDGE)
+coef(ridge.fit.1se)
+
+# validation_data
+validation_data_x <- validation_data[, -1] 
+validation_data_x <- validation_data_x[, -1] # remove year 
+validation_data_x <- validation_data_x[, -1] # remove expectancy
+validation_data_x <- validation_data_x[, -19] # remove region 
+validation_y <- validation_data$Life.expectancy
+head(validation_data_x)
+head(validation_y)
+
+lasso.fit_min_pred <- predict(lasso.fit_min, newx = apply(as.matrix(validation_data_x),2,  as.numeric))
+lasso.fit_1se_pred <- predict(lasso.fit_1se, newx = apply(as.matrix(validation_data_x),2,  as.numeric)) 
+ridge.fit_min_pred <- predict(ridge.fit.min, newx = apply(as.matrix(validation_data_x),2,  as.numeric))  
+ridge.fit.1se_pred <- predict(ridge.fit.1se, newx = apply(as.matrix(validation_data_x),2,  as.numeric))   
+ 
+lasso.fit_min_pred.rmse <- rmse(
+    predicted = lasso.fit_min_pred,
+    actual = validation_y)
+
+lasso.fit_1se_pred.rmse <- rmse(
+    predicted = lasso.fit_1se_pred,
+    actual = validation_y)
+ 
+ridge.fit_min_pred.rmse <- rmse(
+    predicted = ridge.fit_min_pred,
+    actual = validation_y)
+
+
+ridge.fit.1se_pred.rmse <- rmse(
+    predicted = ridge.fit.1se_pred,
+    actual = validation_y) 
+
+RMSE_selection <- tibble(
+    Method = "Ridge with 1se",
+    RMSE = ridge.fit.1se_pred.rmse) 
+
+RMSE_selection <- rbind(RMSE_selection,tibble(
+               Method = "Ridge with min",
+               RMSE = ridge.fit_min_pred.rmse))  
+RMSE_selection <- rbind(RMSE_selection,tibble(
+               Method = "Lasso with lse",
+               RMSE = lasso.fit_1se_pred.rmse)) 
+RMSE_selection <- rbind(RMSE_selection,tibble(
+               Method = "Lasso with min",
+               RMSE = lasso.fit_min_pred.rmse))  
+
+RMSE_selection
+  
+```
+
+v\. Time series regression
+
+```{r}
+mean_life_exp <- c()
+for(yearCur in 2003:2014){
+  subset_data <- data[data$Year == yearCur, ]
+  #print(subset_data)
+  mean_life_exp <- append(mean_life_exp, mean(subset_data$Life.expectancy))
+}
+print(mean_life_exp)
+plot(x = 2003:2014, y = mean_life_exp, type = 'l', ylab = "Mean Life expectancy", xlab = "Year", main = "Mean life expectancy over time")
+
+mean_life_exp_diffed <- c()
+for(index in 1:11){
+  mean_life_exp_diffed <- append(mean_life_exp_diffed, mean_life_exp[index+1] - mean_life_exp[index])
+}
+plot(x = 2003:2013, y = mean_life_exp_diffed, type = 'l', ylab = "Differenced Mean Life expectancy ", xlab = "Year(Earlier year in the differencing)", main = "Differenced Mean life expectancy over time")
+
+acfplot <- acf(ts(mean_life_exp_diffed), main = "Autocorrelation function", ci = 0.2)
+pacf(ts(mean_life_exp_diffed))
+```
+
+```{r}
+library(forecast)
+# Create a time series object
+ts_data <- ts(mean_life_exp_diffed)
+fit <- arima(x = ts_data, order = c(0,0,1), seasonal=list(order = c(0,0,1), period=4))
+fit
+```
+
+```{r}
+forecast_arima <- predict(fit, n.ahead=10)
+print(forecast_arima)
+predictions <- forecast_arima$pred
+standarderror <- forecast_arima$se
+undiffed_predictions <- mean_life_exp
+highci <- rep(NA, 2014)
+lowci <- rep(NA, 2014)
+print(undiffed_predictions)
+for (i in 1:10){
+  undiffed_predictions <- append(undiffed_predictions, undiffed_predictions[length(undiffed_predictions)] + predictions[i])
+  highci <- append(highci, undiffed_predictions[length(undiffed_predictions)] + 1.96*standarderror[i])
+  lowci <- append(lowci, undiffed_predictions[length(undiffed_predictions)] - 1.96*standarderror[i])
+}
+print(undiffed_predictions)
+plot(undiffed_predictions, type = 'l', x = 2003:2024, main = "Prediction of mean life expectancy for next 10 years", ylab = "Mean life expectancy", xlab = "Year", ylim = c(68, 73))
+lines(highci, col="red", lty=2)
+lines(lowci, col="red", lty=2)
+legend("topleft", legend=c("Data/Predictions", "95% Confidence Interval"), col=c("black", "red"), lty=c(1,2), bty="n")
+```
